@@ -1,0 +1,117 @@
+#!/usr/bin/env bash
+
+DIFFLISTPATH="${HOME}/.altPkgControl"
+FEXT="alist"
+
+HELP="Usage: $0 command parameter
+
+Commands include:
+  help - display usage [No param]
+  list - list currently installed packages [No param]
+  pkgc - list number of DPKG-installed packages [No param]
+  inst - installs package [Package String]
+  rem - purges package [Package String]
+  up - update package list AND upgrade packages [No param]
+"
+
+
+# Lock
+	if [[ -f "${DIFFLISTPATH}/lock" ]]; then
+		echo "Process already running."
+		exit 1
+	fi
+
+touch "${DIFFLISTPATH}/lock"
+
+dircheck(){
+	if ! [[ -d "${DIFFLISTPATH}" ]]; then
+		mkdir ${DIFFLISTPATH}
+	fi
+}
+
+# Unlock
+unlock(){
+	rm "${DIFFLISTPATH}/lock"
+}
+
+trap unlock EXIT
+
+if [[ $# -le 0 ]]; then
+	echo "$HELP"
+	exit 0
+fi
+
+while (( $# > 0 ))
+do
+	cmd="$1"
+	case $cmd in
+		help)
+			echo "$HELP"
+			exit 0
+			;;
+		list)
+			LISTSTR=$(dpkg-query -W -f='${binary:Package}/${Version}\n')
+			echo "$LISTSTR"
+			;;
+		pkgc)
+			echo $(dpkg -l | grep -c "^ii")
+			exit 0
+			;;
+		inst)
+			shift
+			if [[ -z $1 ]]; then
+				echo "No package specified"
+				exit 1
+			fi
+
+			if [[ -f "${DIFFLISTPATH}/$1.${FEXT}" ]]; then
+				echo "Package already installed."
+				exit 1
+			fi
+			dircheck
+
+			PREFILE="${DIFFLISTPATH}/PRE$1.${FEXT}"
+			PREPKGS=$(dpkg-query -W -f='${binary:Package}\n')
+			echo "${PREPKGS}" > "${PREFILE}"
+
+			echo "You may want to enter 'y'."
+			INSTALLSTR=$(sudo apt install $1)
+
+			POSTFILE="${DIFFLISTPATH}/POST$1.${FEXT}"
+			POSTPKGS=$(dpkg-query -W -f='${binary:Package}\n')
+			echo "${POSTPKGS}" > "${POSTFILE}"
+
+			echo -e "$INSTALLSTR"
+
+			DIFFPKGS=$(diff "${DIFFLISTPATH}/PRE$1.${FEXT}" "${DIFFLISTPATH}/POST$1.${FEXT}" | grep -o ">.*" | sed "s/>\s//" | sed "s/:.*//")
+			echo "${DIFFPKGS}" > "${DIFFLISTPATH}/$1.${FEXT}"
+			rm "${PREFILE}"
+			rm "${POSTFILE}"
+			exit 0
+			;;
+		rem)
+			shift
+			if [[ -z $1 ]]; then
+				echo "No package specified"
+				exit 1
+			fi
+			dircheck
+
+			LISTFILE="$(cat "${DIFFLISTPATH}/$1.${FEXT}" | tr '\n' ' ')"
+			sudo apt remove --purge ${LISTFILE}
+			sudo apt autoremove --purge
+			rm "${DIFFLISTPATH}/$1.${FEXT}"
+			exit 0
+			;;
+		up)
+			sudo apt update
+			sudo apt upgrade
+			;;
+		*)
+			echo "Unknown command: '$cmd'" >&2
+			exit 1
+			;;
+	esac
+	shift
+done
+
