@@ -2,7 +2,7 @@
 
 # Why
 Apt does not remove all packages it installs.
-![Why](https://github.com/x2DA/alt/assets/why.png)
+![Why](https://github.com/x2DA/alt/blob/main/assets/why.jpg)
 Alt also sucks, but differently.
 
 # Usage
