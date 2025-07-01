@@ -7,11 +7,13 @@ HELP="Usage: $0 command parameter
 
 Commands include:
   help - display usage [No param]
-  list - list currently installed packages [No param]
+  list - list DPKG-installed packages [No param]
   pkgc - list number of DPKG-installed packages [No param]
-  inst - installs package [Package String]
-  rem - purges package [Package String]
-  up - update package list AND upgrade packages [No param]
+  inst - installs DPKG package [Package name]
+  rem - purges DPKG package [Package name]
+  up - update the DPKG package list AND upgrade DPKG packages [No param]
+  llist - list packagelists [No param]
+  ldel - remove a packagelist without purging DPKG package(s) [Package name]
 "
 
 # Lock
@@ -30,6 +32,13 @@ trap unlock EXIT
 dircheck(){
 	if ! [[ -d "${DIFFLISTPATH}" ]]; then
 		mkdir ${DIFFLISTPATH}
+	fi
+}
+
+paramcheck(){
+	if [[ -z $1 ]]; then
+		echo "No param specified"
+		exit 1
 	fi
 }
 
@@ -57,14 +66,11 @@ do
 			;;
 		inst)
 			shift
-			if [[ -z $1 ]]; then
-				echo "No package specified"
-				exit 1
-			fi
+			paramcheck "$1"
 			dircheck
 			OUTFILE=${DIFFLISTPATH}/$1.${FEXT}
 			if [[ -f "${OUTFILE}" ]]; then
-				read -p "Package list for $1 already exists, overwrite it? [y/N] " yn
+				read -p "Package list '$1' already exists, overwrite it? [y/N] " yn
 					case $yn in
 						[yY])
 							echo "Overwritting $1's package list..."
@@ -99,15 +105,19 @@ do
 			;;
 		rem)
 			shift
-			if [[ -z $1 ]]; then
-				echo "No package specified"
-				exit 1
-			fi
+			paramcheck "$1"
 			dircheck
 			OUTFILE=${DIFFLISTPATH}/$1.${FEXT}
 			if ! [[ -f "${OUTFILE}" ]]; then
-				echo "Package list for $1 does not exist."
-				exit 1
+				read -p "Package list '$1' does not exist. Attempt to purge package anyway? [y/N] " yn
+					case $yn in
+						[yY])
+							echo "Attempting to purge $1..."
+							;;
+						*)
+							exit 0
+							;;
+					esac
 			fi
 
 			LISTFILE="$(cat "${OUTFILE}" | tr '\n' ' ')"
@@ -119,6 +129,25 @@ do
 		up)
 			sudo apt update
 			sudo apt upgrade
+			exit 0
+			;;
+		llist)
+			ls -1 "${DIFFLISTPATH}" | grep -Eo ".*\.alist" | sed -E "s/\.alist//g"
+			exit 0
+			;;
+		ldel)
+			shift
+			paramcheck "$1"
+			dircheck
+			OUTFILE="${DIFFLISTPATH}/$1.${FEXT}"
+			if ! [[ -f "${OUTFILE}" ]]; then
+				echo "Package list '$1' does not exist."
+				exit 1
+			fi
+
+			rm "${OUTFILE}"
+			echo "Deleted '$1'"
+			exit 0
 			;;
 		*)
 			echo "Unknown command: '$cmd'" >&2
