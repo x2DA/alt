@@ -14,14 +14,18 @@ Commands include:
   up - update package list AND upgrade packages [No param]
 "
 
-
 # Lock
-	if [[ -f "${DIFFLISTPATH}/lock" ]]; then
-		echo "Process already running."
-		exit 1
-	fi
-
+if [[ -f "${DIFFLISTPATH}/lock" ]]; then
+	echo "Process already running."
+	exit 1
+fi
 touch "${DIFFLISTPATH}/lock"
+
+unlock(){
+	rm "${DIFFLISTPATH}/lock"
+}
+trap unlock EXIT
+
 
 dircheck(){
 	if ! [[ -d "${DIFFLISTPATH}" ]]; then
@@ -29,12 +33,6 @@ dircheck(){
 	fi
 }
 
-# Unlock
-unlock(){
-	rm "${DIFFLISTPATH}/lock"
-}
-
-trap unlock EXIT
 
 if [[ $# -le 0 ]]; then
 	echo "$HELP"
@@ -63,18 +61,25 @@ do
 				echo "No package specified"
 				exit 1
 			fi
-
-			if [[ -f "${DIFFLISTPATH}/$1.${FEXT}" ]]; then
-				echo "Package already installed."
-				exit 1
-			fi
 			dircheck
+			OUTFILE=${DIFFLISTPATH}/$1.${FEXT}
+			if [[ -f "${OUTFILE}" ]]; then
+				read -p "Package list for $1 already exists, overwrite it? [y/N] " yn
+					case $yn in
+						[yY])
+							echo "Overwritting $1's package list..."
+							;;
+						*)
+							exit 0
+							;;
+					esac
+			fi
 
 			PREFILE="${DIFFLISTPATH}/PRE$1.${FEXT}"
 			PREPKGS=$(dpkg-query -W -f='${binary:Package}\n')
 			echo "${PREPKGS}" > "${PREFILE}"
 
-			echo "You may want to enter 'y'."
+			echo "You may want to enter 'y' after confirming sudo."
 			INSTALLSTR=$(sudo apt install $1)
 
 			POSTFILE="${DIFFLISTPATH}/POST$1.${FEXT}"
@@ -83,8 +88,11 @@ do
 
 			echo -e "$INSTALLSTR"
 
-			DIFFPKGS=$(diff "${DIFFLISTPATH}/PRE$1.${FEXT}" "${DIFFLISTPATH}/POST$1.${FEXT}" | grep -o ">.*" | sed "s/>\s//" | sed "s/:.*//")
-			echo "${DIFFPKGS}" > "${DIFFLISTPATH}/$1.${FEXT}"
+			DIFFPKGS=$(diff "${PREFILE}" "${POSTFILE}" | grep -o ">.*" | sed "s/>\s//" | sed "s/:.*//")
+
+
+
+			echo "${DIFFPKGS}" > "${OUTFILE}"
 			rm "${PREFILE}"
 			rm "${POSTFILE}"
 			exit 0
@@ -96,11 +104,16 @@ do
 				exit 1
 			fi
 			dircheck
+			OUTFILE=${DIFFLISTPATH}/$1.${FEXT}
+			if ! [[ -f "${OUTFILE}" ]]; then
+				echo "Package list for $1 does not exist."
+				exit 1
+			fi
 
-			LISTFILE="$(cat "${DIFFLISTPATH}/$1.${FEXT}" | tr '\n' ' ')"
+			LISTFILE="$(cat "${OUTFILE}" | tr '\n' ' ')"
 			sudo apt remove --purge ${LISTFILE}
 			sudo apt autoremove --purge
-			rm "${DIFFLISTPATH}/$1.${FEXT}"
+			rm "${OUTFILE}"
 			exit 0
 			;;
 		up)
@@ -114,4 +127,3 @@ do
 	esac
 	shift
 done
-
