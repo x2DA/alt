@@ -113,6 +113,9 @@ do
 					case $yn in
 						[yY])
 							echo "Attempting to purge $1..."
+								sudo apt remove --purge $1
+								sudo apt autoremove --purge
+							exit 0
 							;;
 						*)
 							exit 0
